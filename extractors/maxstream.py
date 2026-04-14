@@ -25,39 +25,75 @@ class MaxstreamExtractor:
     def _get_random_proxy(self):
         return random.choice(self.proxies) if self.proxies else None
 
-    async def _get_session(self):
+    async def _get_session(self, proxy=None):
+        """Get or create session, optionally with a specific proxy."""
+        # If we need a specific proxy, we should probably create a temporary session
+        # or use a cached one. For simplicity, we create a specialized one if proxy changes.
+        
+        timeout = ClientTimeout(total=45, connect=15, sock_read=30)
+        if proxy:
+            connector = ProxyConnector.from_url(proxy)
+            return ClientSession(timeout=timeout, connector=connector, headers={'User-Agent': self.base_headers["user-agent"]})
+        
         if self.session is None or self.session.closed:
-            timeout = ClientTimeout(total=60, connect=30, sock_read=30)
-            proxy = self._get_random_proxy()
-            if proxy:
-                connector = ProxyConnector.from_url(proxy)
-            else:
-                connector = TCPConnector(limit=0, limit_per_host=0, keepalive_timeout=60, enable_cleanup_closed=True, force_close=False, use_dns_cache=True)
+            connector = TCPConnector(limit=0, limit_per_host=0, keepalive_timeout=60, enable_cleanup_closed=True, force_close=False, use_dns_cache=True)
             self.session = ClientSession(timeout=timeout, connector=connector, headers={'User-Agent': self.base_headers["user-agent"]})
         return self.session
 
+    async def _smart_request(self, url: str, method="GET", **kwargs):
+        """Request with automatic retry using different proxies on connection failure."""
+        last_error = None
+        
+        # Try direct or with current session first
+        proxies_to_try = [None] + (self.proxies if self.proxies else [])
+        
+        for proxy in proxies_to_try:
+            session = await self._get_session(proxy=proxy)
+            try:
+                async with session.request(method, url, **kwargs) as response:
+                    text = await response.text()
+                    if response.status < 400:
+                        if proxy: # Clean up temporary proxy session
+                            await session.close()
+                        return text
+                    else:
+                        logger.warning(f"Request to {url} failed with status {response.status} using proxy {proxy}")
+            except Exception as e:
+                logger.warning(f"Request to {url} failed with error {e} using proxy {proxy}")
+                last_error = e
+            finally:
+                if proxy and 'session' in locals() and not session.closed:
+                    await session.close()
+        
+        raise ExtractorError(f"Connection failed for {url} after trying all paths. Last error: {last_error}")
+
     async def get_uprot(self, link: str):
         """Extract MaxStream URL from uprot redirect."""
-        session = await self._get_session()
         if "msf" in link:
             link = link.replace("msf", "mse")
         
-        async with session.get(link) as response:
-            text = await response.text()
+        text = await self._smart_request(link)
         
         soup = BeautifulSoup(text, "lxml")
-        maxstream_url = soup.find("a")
-        maxstream_url = maxstream_url.get("href")
+        a_tag = soup.find("a")
+        if not a_tag:
+            # Fallback: maybe the link is in a script or button
+            button = soup.find("button", class_="button is-info")
+            if button and button.parent.name == "a":
+                maxstream_url = button.parent.get("href")
+            else:
+                logger.error(f"Could not find 'Continue' link in uprot page: {text[:500]}...")
+                raise ExtractorError("Failed to find redirect link on uprot.net")
+        else:
+            maxstream_url = a_tag.get("href")
+            
         return maxstream_url
 
     async def extract(self, url: str, **kwargs) -> dict:
         """Extract Maxstream URL."""
-        session = await self._get_session()
-        
         maxstream_url = await self.get_uprot(url)
         
-        async with session.get(maxstream_url, headers={"accept-language": "en-US,en;q=0.5"}) as response:
-            text = await response.text()
+        text = await self._smart_request(maxstream_url, headers={"accept-language": "en-US,en;q=0.5"})
 
         # Try direct extraction first
         direct_match = re.search(r'sources:\s*\[\{src:\s*"([^"]+)"', text)
