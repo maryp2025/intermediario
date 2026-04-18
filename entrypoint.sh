@@ -6,7 +6,7 @@ cd /app/flaresolverr && python3 src/flaresolverr.py &
 
 # Start Byparr in the background
 echo "🛡️ Starting Byparr..."
-/app/byparr/byparr &
+cd /app/byparr_src && PORT=8192 python3 main.py &
 
 # Start EasyProxy (Gunicorn)
 echo "🎬 Starting EasyProxy..."

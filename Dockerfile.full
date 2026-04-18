@@ -1,5 +1,6 @@
 # Monolithic Dockerfile for EasyProxy (Full Version)
-# Optimized: Now uses FlareSolverr v3 (Python) - No Node.js required!
+# Optimized: Now uses FlareSolverr v3 (Python) and Byparr (Source)
+# Compatible with AMD64 and ARM64 (Oracle VPS)
 
 FROM python:3.11-bookworm
 
@@ -16,6 +17,7 @@ RUN apt-get update && apt-get install -y \
     git \
     ffmpeg \
     xvfb \
+    chromium \
     libnss3 \
     libatk1.0-0 \
     libatk-bridge2.0-0 \
@@ -42,10 +44,10 @@ RUN git clone https://github.com/FlareSolverr/FlareSolverr.git /app/flaresolverr
     && cd /app/flaresolverr \
     && pip install --no-cache-dir -r requirements.txt
 
-# 4. Byparr (Go Binary)
-RUN mkdir -p /app/byparr \
-    && curl -L https://github.com/ThePhaseless/Byparr/releases/latest/download/byparr-linux-amd64 -o /app/byparr/byparr \
-    && chmod +x /app/byparr/byparr
+# 4. Byparr Setup (Source version for multi-arch support)
+RUN git clone https://github.com/ThePhaseless/Byparr.git /app/byparr_src \
+    && cd /app/byparr_src \
+    && pip install --no-cache-dir .
 
 # 5. EasyProxy Dependencies
 COPY requirements.txt .
