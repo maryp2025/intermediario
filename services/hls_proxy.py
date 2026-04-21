@@ -1364,7 +1364,7 @@ class HLSProxy:
                     api_password=api_password,
                     get_extractor_func=self.get_extractor,
                     no_bypass=no_bypass,
-                    shorten_url_func=self.shorten_hls_url,
+                    shorten_url_func=None,
                 )
                 return web.Response(
                     text=rewritten_manifest,
@@ -2588,7 +2588,7 @@ class HLSProxy:
                         api_password=request.query.get("api_password"),
                         get_extractor_func=self.get_extractor,
                         no_bypass=request.query.get("no_bypass") == "1",
-                        shorten_url_func=self.shorten_hls_url
+                        shorten_url_func=None
                     )
                     return web.Response(text=rewritten, headers={
                         "Content-Type": "application/vnd.apple.mpegurl",
