@@ -2507,19 +2507,28 @@ class HLSProxy:
                                 async def __aenter__(self): return self
                                 async def __aexit__(self, *args): pass
                             
+                            # ✅ DEBUG: Vediamo cosa ci restituisce il fallback
+                            logger.info(f"🔍 [Fallback Debug] Cookies received: {sr_result.get('cookies')}")
+                            
+                            # ✅ CRITICAL: Aggiorna la sessione con i cookie freschi sbloccati
+                            target_sid = request.query.get("hls_sid")
+                            fresh_cookies = sr_result.get("cookies")
+                            
+                            if target_sid and target_sid in self.hls_header_sessions:
+                                if fresh_cookies:
+                                    try:
+                                        fresh_cookies_str = "; ".join([f"{k}={v}" for k, v in fresh_cookies.items()])
+                                        # Mergiamo con i vecchi cookie se possibile
+                                        old_cookies = self.hls_header_sessions[target_sid].get("Cookie", "")
+                                        self.hls_header_sessions[target_sid]["Cookie"] = fresh_cookies_str
+                                        logger.info(f"🔄 [Cookie Sync] Session {target_sid} updated with {len(fresh_cookies)} fresh cookies")
+                                    except Exception as ce:
+                                        logger.error(f"❌ Failed to sync cookies: {ce}")
+                                else:
+                                    logger.warning(f"⚠️ [Cookie Sync] No cookies found in sr_result for {target_sid}")
+                            
                             resp_ctx = MockSRResp(sr_result["html"])
                             goto_manifest_processing = True
-
-                            # ✅ CRITICAL: Aggiorna la sessione con i cookie freschi sbloccati
-                            # Questo permetterà ai segmenti .ts successivi di funzionare!
-                            target_sid = request.query.get("hls_sid")
-                            if target_sid and target_sid in self.hls_header_sessions and sr_result.get("cookies"):
-                                try:
-                                    fresh_cookies_str = "; ".join([f"{k}={v}" for k, v in sr_result["cookies"].items()])
-                                    self.hls_header_sessions[target_sid]["Cookie"] = fresh_cookies_str
-                                    logger.info(f"🔄 [Cookie Sync] Session {target_sid} updated with fresh cookies from fallback")
-                                except Exception as ce:
-                                    logger.error(f"❌ Failed to sync cookies: {ce}")
                         else:
                             # Fallback failed too, use original curl_resp
                             resp_ctx = MockResp(curl_resp)
