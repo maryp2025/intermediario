@@ -195,7 +195,6 @@ class ManifestRewriter:
         api_password: str = None,
         get_extractor_func=None,
         no_bypass: bool = False,
-        hls_sid: str = None,
         shorten_url_func=None,
     ) -> str:
         """Riscrive gli URL nei manifest HLS per passare attraverso il proxy."""
@@ -244,15 +243,12 @@ class ManifestRewriter:
                 logger.debug(
                     f"VixSrc: Selected bandwidth {highest_quality_stream['bandwidth']}."
                 )
-                if hls_sid:
-                    header_params = f"&hls_sid={hls_sid}"
-                else:
-                    header_params = "".join(
-                        [
-                            f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
-                            for key, value in stream_headers.items()
-                        ]
-                    )
+                header_params = "".join(
+                    [
+                        f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
+                        for key, value in stream_headers.items()
+                    ]
+                )
                 if api_password:
                     header_params += f"&api_password={api_password}"
 
@@ -342,15 +338,12 @@ class ManifestRewriter:
                 highest_quality_stream["bandwidth"],
             )
 
-            if hls_sid:
-                header_params = f"&hls_sid={hls_sid}"
-            else:
-                header_params = "".join(
-                    [
-                        f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
-                        for key, value in stream_headers.items()
-                    ]
-                )
+            header_params = "".join(
+                [
+                    f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
+                    for key, value in stream_headers.items()
+                ]
+            )
 
             if api_password:
                 header_params += f"&api_password={api_password}"
@@ -412,15 +405,12 @@ class ManifestRewriter:
             return "\n".join(rewritten_lines)
 
         # --- Logica Standard ---
-        if hls_sid:
-            header_params = f"&hls_sid={hls_sid}"
-        else:
-            header_params = "".join(
-                [
-                    f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
-                    for key, value in stream_headers.items()
-                ]
-            )
+        header_params = "".join(
+            [
+                f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
+                for key, value in stream_headers.items()
+            ]
+        )
 
         if api_password:
             header_params += f"&api_password={api_password}"
@@ -453,15 +443,12 @@ class ManifestRewriter:
                     )
 
                     # Aggiungi header
-                    if hls_sid:
-                        key_header_params = f"&hls_sid={hls_sid}"
-                    else:
-                        key_header_params = "".join(
-                            [
-                                f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
-                                for key, value in stream_headers.items()
-                            ]
-                        )
+                    key_header_params = "".join(
+                        [
+                            f"&h_{urllib.parse.quote(key, safe='')}={urllib.parse.quote(str(value), safe='')}"
+                            for key, value in stream_headers.items()
+                        ]
+                    )
                     proxy_key_url += key_header_params
 
                     if api_password:
