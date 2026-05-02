@@ -32,10 +32,11 @@ class F16PxExtractor(BaseExtractor):
         def label_key(s):
             try:
                 return int(s.get("label", 0))
-            except Exception:
+            except:
                 return 0
         return sorted(sources, key=label_key, reverse=True)[0]["url"]
 
+    # ✅ Correct fingerprint (ResolveURL compatible)
     def _make_fingerprint_payload(self) -> dict:
         viewer_id = os.urandom(16).hex()
         device_id = os.urandom(16).hex()
@@ -53,18 +54,21 @@ class F16PxExtractor(BaseExtractor):
             json.dumps(token_payload, separators=(",", ":")).encode()
         ).rstrip(b"=").decode()
 
+        # ✅ FIX: SHA256 (NOT HMAC)
         sig = hashlib.sha256(payload_b64.encode()).digest()
+
         sig_b64 = base64.urlsafe_b64encode(sig).rstrip(b"=").decode()
         token = f"{payload_b64}.{sig_b64}"
 
-        return {
-            "fingerprint": {
-                "viewer_id": viewer_id,
-                "device_id": device_id,
-                "confidence": token_payload["confidence"],
-                "token": token,
-            }
+        # match ResolveURL structure
+        fingerprint = {
+            "viewer_id": viewer_id,
+            "device_id": device_id,
+            "confidence": token_payload["confidence"],
+            "token": token,
         }
+
+        return {"fingerprint": fingerprint}
 
     def _decrypt_sources(self, pb: dict) -> list:
         iv = self._b64url_decode(pb["iv"])
@@ -79,35 +83,6 @@ class F16PxExtractor(BaseExtractor):
 
         return json.loads(decrypted.decode("utf-8", "ignore")).get("sources") or []
 
-    async def _fetch_playback(self, host: str, media_id: str, headers: dict) -> dict:
-        """
-        Try endpoints in order until one returns usable playback data.
-        1. POST /api/videos/{id}/playback        (legacy API)
-        2. POST /api/videos/{id}/embed/playback  (fallback)
-        """
-        fingerprint = self._make_fingerprint_payload()
-
-        endpoints = [
-            f"https://{host}/api/videos/{media_id}/playback",
-            f"https://{host}/api/videos/{media_id}/embed/playback",
-        ]
-
-        for api_url in endpoints:
-            try:
-                resp = await self._make_request(
-                    api_url,
-                    headers=headers,
-                    method="POST",
-                    json=fingerprint,
-                )
-                data = json.loads(resp.text)
-                if data.get("sources") or data.get("playback"):
-                    return data
-            except Exception:
-                pass
-
-        raise ExtractorError("F16PX: All API endpoints failed")
-
     async def extract(self, url: str, **kwargs) -> dict:
         parsed = urlparse(url)
         host = parsed.netloc
@@ -119,12 +94,33 @@ class F16PxExtractor(BaseExtractor):
 
         media_id = match.group(1)
 
+        # ✅ FIX: correct endpoint
+        api_url = f"https://{host}/api/videos/{media_id}/embed/playback"
+
         headers = self.base_headers.copy()
-        headers["referer"] = f"{origin}/e/{media_id}"
+        headers["referer"] = f"{origin}/"
         headers["origin"] = origin
         headers["content-type"] = "application/json"
 
-        data = await self._fetch_playback(host, media_id, headers)
+        # ✅ Try POST (modern API)
+        try:
+            resp = await self._make_request(
+                api_url,
+                headers=headers,
+                method="POST",
+                json=self._make_fingerprint_payload()
+            )
+            data = json.loads(resp.text)
+        except Exception:
+            data = {}
+
+        # ✅ Fallback to GET if POST fails
+        if not data or (not data.get("sources") and not data.get("playback")):
+            resp = await self._make_request(api_url, headers=headers)
+            try:
+                data = json.loads(resp.text)
+            except Exception:
+                raise ExtractorError("F16PX: Invalid JSON response")
 
         # Case 1: plain sources
         if data.get("sources"):
